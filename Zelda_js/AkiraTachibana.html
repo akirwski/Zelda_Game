@@ -1,0 +1,660 @@
+<head>
+	<title>Zelda Game</title>
+	<meta charset="UTF-8">
+</head>
+<body>
+<br>
+<canvas id="myCanvas" width="750" height="600" style="border:1px solid #cccccc;"></canvas>
+
+<script type="text/javascript">
+
+class Sprite
+{
+	constructor(x1, y1, image_url)
+	{
+		this.x = x1;
+		this.y = y1;
+		this.w = 75 - 1;
+		this.h = 75 - 1;
+		this.image = new Image();
+		this.image.src = image_url;
+
+	}
+	isLink(){
+		return false;
+	}
+
+	isBrick(){
+		return false;
+	}
+
+	isPot(){
+		return false;
+	}
+
+	detectCollision(X, Y, W, H){
+		if(this.y + this.h < Y)
+			return false;
+		if(this.y > Y + H)
+			return false;
+		 if(this.x + this.w < X)
+			return false;
+		if(this.x > X + W)
+			return false;
+
+		return true;
+	}
+
+}
+class Brick extends Sprite {
+	constructor(x, y, image_url)
+	{
+		super(x, y, image_url);
+	}
+
+	isBrick(){
+		return true;
+	}
+
+
+
+}
+
+class Pot extends Sprite
+{
+
+	constructor(x, y, image_url){
+		super(x, y, image_url);
+		this.state = 0;
+		this.dir = 0;
+		this.took5 = false;
+		this.pot_images = [];
+		this.timerID = null;
+		this.loadImage();
+	}
+
+	loadImage(){
+		this.pot_images[0] = "images/pot.jpg";
+		this.pot_images[1] = "images/pot_broken.jpg";
+	}
+
+
+	updateImage(){
+		this.image.src = this.pot_images[this.state];
+	}
+
+
+ 	update(direction, potx, poty){
+        this.x = potx;
+        this.y = poty;
+        this.dir = direction;
+    }
+	isPot(){
+		return true;
+	}
+
+ 	breakPot(){
+		this.state = 1;
+		var thiz = this;
+		setTimeout(function(){thiz.took5 = true;}, 3000);
+	}
+
+
+
+}
+
+class Link extends Sprite
+{
+
+	constructor(x, y, image_url)
+	{
+		super(x, y, image_url);
+		this.direction = 0;
+		this.px = this.x;
+		this.py = this.y;
+		this.link_images = [];
+		this.loadImage();
+	}
+
+	loadImage(){
+		for(let i=0; i<20; i++){
+			this.link_images[i] = "images/" + i + ".jpg";
+		}
+	}
+
+	updateImage(){
+		this.image.src = this.link_images[this.direction];
+	}
+
+	update(dir, x, y){
+		this.x = x;
+		this.y = y;
+		this.direction = dir;
+
+		View.updateScrollX(x);
+        View.updateScrollY(y);
+	}
+
+
+	savePrevLocation(){
+		//save privious position
+		this.px = this.x;
+		this.py = this.y;
+	}
+	getOut(){
+		//if link and brick collided, link should be at privious position
+		this.x = this.px;
+		this.y = this.py;
+	}
+
+	isLink(){
+		return true;
+	}
+
+}
+
+class Boomerang extends Sprite {
+
+    constructor(direction, x, y, image_url){
+		super(x, y, image_url);
+        this.state = 0;
+        this.w = 30;
+        this.h = 30;
+		this.boomerang_images = [];
+		this.dir = direction;
+		this.loadImage();
+	}
+
+	loadImage(){
+		for(let i=0; i<4; i++){
+			this.boomerang_images[i] = "images/boomerang" + (i+1) + ".jpg";
+		}
+	}
+
+	//update
+	updateImage(){
+		this.image.src = this.boomerang_images[this.state];
+	}
+
+	update(s, bx, by){
+		this.x = bx;
+		this.y = by;
+		this.state = s;
+	}
+}
+
+
+class Model
+{
+	constructor()
+	{
+		this.sprites = [];
+
+		//pushing a link
+		this.link = new Link(75, 75, 'images/0.jpg');
+		this.link.x = 75;
+		this.link.y = 75;
+		this.link.dir = 0;
+		this.sprites.push(this.link);
+		//pushing bricks and pots
+		this.unmarshal();
+
+		//preparing array
+		this.moving_pots = [];
+		this.boomerangs = [];
+
+	}
+
+
+	update(direction)
+	{
+		this.dir = direction;
+
+		//set link current position and destination
+		let lx = this.link.x; let ly =  this.link.y;
+		let lw = this.link.w; let lh =  this.link.h;
+		this.link.savePrevLocation();
+		let changex = 0, changey = 0;
+
+		if(parseInt(direction / 5) == 0){//down
+			changey += 75;
+
+		} else if (parseInt(direction / 5) == 1){//left
+		 	changex -= 75;
+		} else if (parseInt(direction / 5) == 2){//right
+			changex +=75;
+		} else if (parseInt(direction / 5) == 3){//up
+			changey -= 75;
+		}
+		lx += changex;
+		ly += changey;
+
+		//to set pot setDestination
+		let potx=0, poty=0, potw=0, poth=0, index_pot=0;
+		let brick_collided = false;
+		let pot_collided = false;
+		let pot;
+
+		//detect a collision between a link and a pot
+		for(let i = 0; i < this. sprites.length; i++){
+			 if(this.sprites[i].isPot()){
+				if(this.sprites[i].detectCollision(lx, ly, lw, lh)){
+					//console.log("you want to push this pot");
+					pot_collided = true;
+					index_pot = i;
+					pot = this.sprites[i];
+					potx = pot.x + changex;
+					poty = pot.y + changey;
+					potw = pot.w;
+					poth = pot.h;
+				}
+			}
+		}
+
+		//to avoid stepping on the broken pot or moving pot.
+		for(let i = 0; i < this.moving_pots.length; i++){
+			if(this.moving_pots[i].detectCollision(lx, ly, lw, lh)){
+				//console.log("Collided with broken pot");
+				brick_collided = true;
+			}
+		}
+
+
+		//detect collisions between a brick and a link or a brick and a pot, and collision between a pusshing pot and the latter pot
+		for(let i = 0; i < this.sprites.length; i++){
+			if(this.sprites[i].isBrick()){
+				if(this.sprites[i].detectCollision(lx, ly, lw, lh) || (pot_collided && this.sprites[i].detectCollision(potx, poty, potw, poth))){
+						if(pot_collided){
+							//console.log("but Pot Collided with a brick");
+							//sound.play();
+						}
+						brick_collided = true;
+						break;
+				}
+			}
+			if(this.sprites[i].isPot()){
+				if(pot_collided && this.sprites[i].detectCollision(potx, poty, potw, poth)){
+						if(pot_collided){
+							//console.log("but Pot Collided with a pot");
+						}
+						pot_collided = false;
+						brick_collided = true;
+						break;
+				}
+			}
+		}
+
+		//if there is a brick next to a pushing pot, immediately break a pot
+		if(pot_collided && brick_collided){
+			pot = this.sprites[index_pot];
+			pot.breakPot();
+			this.moving_pots.push(pot);
+			this.sprites.splice(index_pot, 1);
+		}
+
+		//if there are any space betweeen a pushing pot and a brick, update only the pot's direction, and add to moving_pot
+		else if (pot_collided){
+			pot = this.sprites[index_pot];
+			pot.update(direction, potx, poty);
+			this.moving_pots.push(pot);
+			this.sprites.splice(index_pot, 1);
+		}
+		//if there is a pot next to a pusshing pot or
+		//if the linke collided with brick, bounce him back to the previous location
+		else if(brick_collided){
+			this.link.update(direction, lx, ly);
+			this.link.getOut();
+		} else {
+			this.link.update(direction, lx, ly);
+			this.link.x = lx;
+			this.link.y = ly;
+			this.link.dir = direction;
+		}
+
+	}
+
+
+	unmarshal(){
+		//unmarshal bricks
+		let bricks = [225, 0, 300, 0, 375, 0, 450, 0, 525, 0, 600, 0, 675, 0, 0, 75, 0, 150, 0, 225, 0, 300, 0, 375, 0, 450, 0, 525, 0, 600, 0, 675, 0, 750, 0, 825, 0, 750, 0, 900, 0, 975, 0, 1050, 0, 1125, 75, 1125, 150, 1125, 225, 1125, 300, 1125, 375, 1125, 450, 1125, 525, 1125, 600, 1125, 675, 1125, 750, 1125, 825, 1125, 900, 1125, 975, 1125, 1050, 1125, 1125, 1125, 1200, 1125, 1275, 1125, 1350, 1125, 1425, 1125, 1425, 1050, 1425, 975, 1425, 900, 1425, 825, 1425, 750, 1425, 675, 1425, 600, 1350, 600, 1275, 600, 1200, 600, 750, 600, 825, 600, 900, 600, 750, 675, 750, 750, 1425, 450, 1425, 525, 1425, 375, 1425, 300, 1425, 150, 1425, 225, 1425, 75, 1425, 0, 1275, 0, 1350, 0, 1200, 0, 1125, 0, 975, 0, 1050, 0, 900, 0, 825, 0, 750, 0, 750, 375, 750, 525, 750, 450, 825, 525, 1350, 525, 1275, 525, 900, 525, 75, 525, 150, 525, 75, 600, 150, 600, 600, 600, 675, 600, 525, 600, 675, 525, 600, 525, 525, 525, 675, 675, 675, 825, 675, 750, 750, 825, 1200, 525, 675, 450, 675, 375, 750, 75, 675, 75, 225, 150, 300, 225, 300, 300, 225, 375, 300, 375, 375, 375, 225, 825, 300, 750, 375, 825, 375, 900, 300, 975, 225, 1050, 300, 1050, 375, 1050, 975, 1050, 1050, 1050, 1125, 975, 1050, 900, 975, 900, 1125, 825, 1050, 750, 975, 750, 1050, 150, 975, 225, 1050, 300, 1125, 300, 1200, 300, 1125, 225, 1125, 375, 1125, 150, 975, 300, 0, 0, 75, 0, 150, 0, 300, 150];
+
+		for(let i=0; i<bricks.length; i++){
+			this.sprites.push(new Brick(bricks[i], bricks[i+1], 'images/brick.jpg'));
+			i++;
+		}
+
+		let pots = [1125, 750, 1200, 975, 450, 900, 375, 300, 450, 300, 225, 75, 975, 150, 1050, 375, 1050, 450, 1125, 450, 1275, 975, 1350, 975, 1125, 1050, 1200, 1050, 1275, 1050, 1350, 1050, 225, 675, 300, 675, 375, 675, 525, 675, 525, 825, 600, 825, 600, 225, 1350, 225, 150, 450];
+		for(let i=0; i<pots.length; i++){
+			this.sprites.push(new Pot(pots[i],pots[i+1], 'images/pot.jpg'));
+			i++;
+		}
+	}
+
+	deleteBrokenPot(){
+		for(let i = 0; i < this.moving_pots.length; i++){
+			if(this.moving_pots[i].isPot()){
+				if(this.moving_pots[i].state == 1 && this.moving_pots[i].took5 == true){
+					//console.log("broken pot = 1 and took5")
+					this.moving_pots.splice(i, 1);
+
+				}
+					//console.log("broken pot not yet")
+			}
+		}
+	}
+
+	stopSprite(stop){
+			this.link.update(stop, this.link.x, this.link.y);
+	}
+
+
+	detectCollisionForPot(potx, poty, potw, poth, pi){
+
+		for(let i = 0; i < this.sprites.length; i++){
+			if(this.sprites[i].isPot()){
+				if(this.sprites[i].detectCollision(potx, poty, potw, poth)){
+					this.sprites[i].breakPot();
+					this.moving_pots[pi].breakPot();
+					return true;
+				}
+			}
+			else if(this.sprites[i].isBrick()){
+			   if(this.sprites[i].detectCollision(potx, poty, potw, poth)){
+				   //console.log("pot hit brick");
+				   this.moving_pots[pi].breakPot();
+				   return true;
+			   }
+			}
+		}
+		return false;
+	}
+
+	throwBoomerang(){
+		//state for boomerang
+		let s = 0;
+		//set link current position and destination
+		var bx = this.link.x, by = this.link.y;
+	 	var bw = this.link.w, bh = this.link.h;
+		var dir = this.link.dir;
+
+		if(parseInt(dir / 5) == 0){//down
+			by += 15;
+		} else if (parseInt(dir / 5) == 1){//left
+			bx -= 15;
+		} else if (parseInt(dir / 5) == 2){//right
+			bx += 15;
+		} else if (parseInt(dir / 5) == 3){//up
+			by -= 15;
+		}
+
+		//add new boomerang to sprites
+		let bi = this.boomerangs.length;
+		this.boomerangs.push(new Boomerang(dir, bx, by, 'images/boomerang1.jpg'));
+
+		if(!this.detectCollisionForBoomerang(bx, by, bw, bh))
+			this.boomerangs[bi].update(s, bx, by);
+		else{
+			this.boomerangs.splice(bi, 1);
+		}
+	}
+
+		//if collided, return true
+	detectCollisionForBoomerang(bx, by, bw, bh){
+
+		for(let i = 0; i < this.sprites.length; i++){
+			if(this.sprites[i].isPot()){
+				if(this.sprites[i].state == 0){
+					if(this.sprites[i].detectCollision(bx, by, bw, bh)){
+						//sound.play();
+						this.sprites[i].breakPot();
+						this.moving_pots.push(this.sprites[i]);
+						this.sprites.splice(i, 1);
+						return true;
+					}
+				}
+			}
+			else if(this.sprites[i].isBrick()){
+			   if(this.sprites[i].detectCollision(bx, by, bw, bh)){
+				   //System.out.println("boomerang hit brick");
+				   return true;
+			   }
+			}
+		}
+		return false;
+	}
+
+	updateSprite(){
+		if(this.boomerangs.length > 0){
+			//detect a collision between a link and a pot
+			for(let bi=0; bi<this.boomerangs.length; bi++){
+				let br = this.boomerangs[bi];
+				let  bx = br.x, by = br.y;
+				let  bw = br.w, bh = br.h;
+				let  dir = br.dir;
+				let  s = br.state;
+
+				if(parseInt(dir / 5) == 0){//down
+					by += 15;
+				} else if (parseInt(dir / 5) == 1){//left
+					bx -= 15;
+				} else if (parseInt(dir / 5) == 2){//right
+					bx += 15;
+				} else if (parseInt(dir / 5) == 3){//up
+					by -= 15;
+				}
+
+				if(!this.detectCollisionForBoomerang(bx, by, bw, bh)){
+					if(s==3)
+						s=0;
+					else
+						s+=1;
+					br.update(s, bx, by);
+				} else  {
+					this.boomerangs.splice(bi, 1);
+				}
+			}
+		}
+
+		if(this.moving_pots.length > 0) {
+			//detect a collision between a link and a pot
+			for(let pi=0; pi<this.moving_pots.length; pi++){
+				let pot = this.moving_pots[pi];
+				if(pot.state == 0){
+					let potx = pot.x, poty = pot.y;
+					let potw = pot.w, poth = pot.h;
+					let dir = pot.dir;
+					let s = pot.state;
+					if(parseInt(dir / 5) == 0){//down
+						poty += 15;
+					} else if (parseInt(dir / 5) == 1){//left
+						potx -= 15;
+					} else if (parseInt(dir / 5) == 2){//right
+						potx += 15;
+					} else if (parseInt(dir / 5) == 3){//up
+						poty -= 15;
+					}
+
+					if(!this.detectCollisionForPot(potx, poty, potw, poth, pi)){
+						pot.update(dir, potx, poty);
+					}
+				}
+			}
+		}
+	}
+
+}
+
+
+
+
+class View
+{
+	static viewX = 750;
+	static viewY = 600;
+	static scrollPosX = 0;
+	static scrollPosY = 0;
+
+	constructor(model)
+	{
+		this.model = model;
+		this.canvas = document.getElementById("myCanvas");
+		this.update();
+	}
+
+	update()
+	{
+		let ctx = this.canvas.getContext("2d");
+		ctx.clearRect(0, 0, View.viewX, View.viewY);
+
+		//static pot or link
+		for(let i = 0; i < this.model.sprites.length; i++)
+		{
+			let sprite = this.model.sprites[i];
+			if(!sprite.isBrick())
+				sprite.updateImage();
+			this.updateOnView(ctx, sprite);
+		}
+		//moving pots
+		for(let i = 0; i < this.model.moving_pots.length; i++){
+			let sprite = this.model.moving_pots[i]
+			sprite.updateImage();
+			this.updateOnView(ctx, sprite);
+		}
+
+		for(let i = 0; i < this.model.boomerangs.length; i++){
+			let sprite = this.model.boomerangs[i];
+			sprite.updateImage();
+			this.updateOnView(ctx, sprite);
+		}
+	}
+
+	updateOnView(ctx, sprite){
+		if(View.scrollPosX == 0 && View.scrollPosY == 0)
+			ctx.drawImage(sprite.image, sprite.x, sprite.y);
+		else if(View.scrollPosX == View.viewX && View.scrollPosY == 0)
+			ctx.drawImage(sprite.image, sprite.x - View.scrollPosX , sprite.y);
+		else if(View.scrollPosX == 0 && View.scrollPosY == View.viewY)
+			ctx.drawImage(sprite.image, sprite.x, sprite.y - View.scrollPosY);
+		else if(View.scrollPosX == View.viewX && View.scrollPosY == View.viewY)
+			ctx.drawImage(sprite.image, sprite.x - View.scrollPosX , sprite.y - View.scrollPosY);
+
+	}
+
+	static updateScrollX(sx){
+		if(sx >= View.viewX){
+			View.scrollPosX = View.viewX;
+		}
+		else
+			View.scrollPosX = 0;
+	}
+
+   static updateScrollY(sy){
+
+		if(sy >= View.viewY){
+			View.scrollPosY = View.viewY;
+		}
+		else
+			View.scrollPosY = 0;
+
+	}
+}
+
+
+
+
+
+
+
+class Controller
+{
+	constructor(model, view)
+	{
+		this.model = model;
+		this.view = view;
+		this.key_right = false;
+		this.key_left = false;
+		this.key_up = false;
+		this.key_down = false;
+		this.index = 0;
+		let self = this;
+		//view.canvas.addEventListener("click", function(event) { self.onClick(event); });
+		document.addEventListener('keydown', function(event) { self.keyDown(event); }, false);
+		document.addEventListener('keyup', function(event) { self.keyUp(event); }, false);
+		//console.log("finished constructing controller");
+	}
+
+/*
+	onClick(event)
+	{
+		this.model.onclick(event.pageX - this.view.canvas.offsetLeft, event.pageY - this.view.canvas.offsetTop);
+	}
+*/
+	keyDown(event)
+	{
+		let direction = -1;
+		if(event.keyCode == 39) { this.key_right = true; direction=11 + this.index;}
+		else if(event.keyCode == 37) { this.key_left = true; direction=6 + this.index;}
+		else if(event.keyCode == 38) { this.key_up = true;direction=16 + this.index;}
+		else if(event.keyCode == 40) { this.key_down = true;direction=1 + this.index;}
+		else if(event.ctrlKey) { this.model.throwBoomerang();}
+		if(this.index < 3)
+			this.index++;
+		else
+			this.index = 0;
+
+		if(direction !=-1)
+			this.model.update(direction);
+	}
+
+	keyUp(event)
+	{
+		var stop = -1;
+		if(event.keyCode == 39) { this.key_right = false; stop=10; }
+		else if(event.keyCode == 37) { this.key_left = false; stop=5; }
+		else if(event.keyCode == 38) { this.key_up = false; stop=15; }
+		else if(event.keyCode == 40) { this.key_down = false; stop=0; }
+
+
+		if(stop != -1)
+			this.model.stopSprite(stop);
+	}
+
+
+}
+
+
+
+
+
+class Game
+{
+	constructor()
+	{
+		this.model = new Model();
+		this.view = new View(this.model);
+		this.controller = new Controller(this.model, this.view);
+
+	}
+
+	onTimer()
+	{
+		this.model.updateSprite();
+		this.model.deleteBrokenPot();
+		this.view.update();
+	}
+}
+
+let game = new Game();
+let timer = setInterval(function() { game.onTimer(); }, 40);
+
+
+</script>
+
+</body>
+
+
+<style>
+#myCanvas{
+    background: Aqua;
+}
+</style>
